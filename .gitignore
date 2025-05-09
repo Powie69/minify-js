@@ -1,5 +1,6 @@
-# https://github.com/github/gitignore/blob/main/Go.gitignore
+*.js
 
+# https://github.com/github/gitignore/blob/main/Go.gitignore
 # Binaries for programs and plugins
 *.exe
 *.exe~
