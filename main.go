@@ -3,14 +3,13 @@ package main
 import (
 	"fmt"
 	"github.com/manifoldco/promptui"
+	"github.com/urfave/cli"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-
-	"github.com/urfave/cli"
 )
 
 func main() {
@@ -29,7 +28,6 @@ func main() {
 }
 
 func minifyJavaScript(jsCode string) (string, error) {
-	// Send form-encoded POST in one call
 	resp, err := http.PostForm(
 		"https://www.toptal.com/developers/javascript-minifier/api/raw",
 		url.Values{"input": {jsCode}},
@@ -57,24 +55,6 @@ func readFile(c *cli.Context) error {
 		return fmt.Errorf("must specify file")
 	}
 
-	//prompt := promptui.Select{
-	//	Label: "Select your favorite animal",
-	//	Items: []string{
-	//		"dog",
-	//		"cat",
-	//		"bird",
-	//	},
-	//	Size: 3, // show all items at once
-	//}
-	//
-	//// Run it!
-	//i, result, err := prompt.Run()
-	//if err != nil {
-	//	log.Fatalf("Prompt failed %v\n", err)
-	//}
-
-	//fmt.Printf("You chose #%d: %q\n", i+1, result)
-
 	filePath := c.Args().First()
 	file, err := filepath.Abs(filePath)
 	if err != nil {
@@ -94,11 +74,10 @@ func readFile(c *cli.Context) error {
 		return fmt.Errorf("%s is a directory, not a file", file)
 	}
 
-	fileDir := filepath.Dir(file)
 	fileName := filepath.Base(file)
 	fileExt := filepath.Ext(fileName)
 	baseName := fileName[:len(fileName)-len(fileExt)]
-	minifiedFileName := filepath.Join(fileDir, fmt.Sprintf("%s.min%s", baseName, fileExt))
+	minifiedFileName := filepath.Join(filepath.Dir(file), fmt.Sprintf("%s.min%s", baseName, fileExt))
 
 	if _, err := os.Stat(minifiedFileName); err == nil {
 		prompt := promptui.Select{
@@ -115,6 +94,15 @@ func readFile(c *cli.Context) error {
 			log.Fatalf("Prompt failed %v\n", err)
 		}
 
+		switch i {
+		case 1:
+			fmt.Println("Output file shall be named:")
+			if _, err := fmt.Scanln(&minifiedFileName); err != nil {
+				return err
+			}
+		case 2:
+			os.Exit(0)
+		}
 	}
 
 	fmt.Printf("Processing file: %s\n", file)
