@@ -16,6 +16,12 @@ func main() {
 	app := &cli.App{
 		Name:  "miniJs",
 		Usage: "Process JavaScript files",
+		Flags: []cli.Flag{
+			cli.StringFlag{
+				Name:  "n, name",
+				Usage: "Specify the output file name",
+			},
+		},
 		Action: func(c *cli.Context) error {
 			return readFile(c)
 		},
@@ -28,26 +34,64 @@ func main() {
 }
 
 func minifyJavaScript(jsCode string) (string, error) {
-	resp, err := http.PostForm(
+	res, err := http.PostForm(
 		"https://www.toptal.com/developers/javascript-minifier/api/raw",
 		url.Values{"input": {jsCode}},
 	)
 	if err != nil {
 		return "", fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer res.Body.Close()
 
-	// Check for non-200 status
-	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("bad status: %s", resp.Status)
+	if res.StatusCode >= 400 {
+		return "", fmt.Errorf("bad status: %s", res.Status)
 	}
 
-	// Read and return body
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return "", fmt.Errorf("read failed: %w", err)
 	}
 	return string(body), nil
+}
+
+func outputFileName(flagValue string, file string) string {
+	if flagValue == "" {
+		fileName := filepath.Base(file)
+		fileExt := filepath.Ext(fileName)
+		baseName := fileName[:len(fileName)-len(fileExt)]
+		flagValue = fmt.Sprintf("%s.min%s", baseName, fileExt)
+	}
+
+	return filepath.Join(filepath.Dir(file), flagValue)
+}
+
+func isOutputAlreadyExist(minifiedFileName string) (bool, error) {
+	if _, err := os.Stat(minifiedFileName); err == nil {
+		prompt := promptui.Select{
+			Label: "Minified file already exist",
+			Items: []string{
+				"Override output file",
+				"Rename output File",
+				"Cancel operation",
+			},
+		}
+
+		i, _, err := prompt.Run()
+		if err != nil {
+			log.Fatalf("Prompt failed %v\n", err)
+		}
+
+		switch i {
+		case 1:
+			fmt.Println("Output file shall be named:")
+			if _, err := fmt.Scanln(&minifiedFileName); err != nil {
+				return false, err
+			}
+		case 2:
+			os.Exit(0)
+		}
+	}
+	return false, nil
 }
 
 func readFile(c *cli.Context) error {
@@ -74,35 +118,24 @@ func readFile(c *cli.Context) error {
 		return fmt.Errorf("%s is a directory, not a file", file)
 	}
 
-	fileName := filepath.Base(file)
-	fileExt := filepath.Ext(fileName)
-	baseName := fileName[:len(fileName)-len(fileExt)]
-	minifiedFileName := filepath.Join(filepath.Dir(file), fmt.Sprintf("%s.min%s", baseName, fileExt))
+	minifiedFileName := outputFileName(c.String("name"), file) // string
 
-	if _, err := os.Stat(minifiedFileName); err == nil {
-		prompt := promptui.Select{
-			Label: "Minified file already exist",
-			Items: []string{
-				"Override output file",
-				"Rename output File",
-				"Cancel operation",
-			},
+	for {
+		if result, err := isOutputAlreadyExist(minifiedFileName); err != nil {
+			return err
+		} else if !result {
+			break
 		}
 
-		i, _, err := prompt.Run()
+		// Prompt user to enter a new name
+		prompt := promptui.Prompt{
+			Label: "File already exists. Please enter a new name",
+		}
+		newName, err := prompt.Run()
 		if err != nil {
-			log.Fatalf("Prompt failed %v\n", err)
+			return fmt.Errorf("error getting new name: %v", err)
 		}
-
-		switch i {
-		case 1:
-			fmt.Println("Output file shall be named:")
-			if _, err := fmt.Scanln(&minifiedFileName); err != nil {
-				return err
-			}
-		case 2:
-			os.Exit(0)
-		}
+		minifiedFileName = outputFileName(newName, file)
 	}
 
 	fmt.Printf("Processing file: %s\n", file)
@@ -111,18 +144,16 @@ func readFile(c *cli.Context) error {
 		return fmt.Errorf("error reading file: %v", err)
 	}
 
-	// Minify the JavaScript
-	minified, err := minifyJavaScript(string(contents))
+	minifiedOutput, err := minifyJavaScript(string(contents))
 	if err != nil {
 		return fmt.Errorf("error minifying JavaScript: %v", err)
 	}
 
-	// Write minified content to new file
-	if err := os.WriteFile(minifiedFileName, []byte(minified), 0644); err != nil {
-		return fmt.Errorf("error writing minified file: %v", err)
+	if err := os.WriteFile(minifiedFileName, []byte(minifiedOutput), 0644); err != nil {
+		return fmt.Errorf("error writing minifiedOutput file: %v", err)
 	}
 
-	fmt.Printf("Minified output:\n%s\n", minified)
+	fmt.Printf("Minified output:\n%s\n", minifiedOutput)
 	fmt.Printf("Minified file created: %s\n", minifiedFileName)
 
 	return nil
